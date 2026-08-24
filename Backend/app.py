@@ -8,6 +8,7 @@ from api.estados.routes import estados_bp
 from api.roles.routes import roles_bp
 from api.mediciones.routes import mediciones_bp
 from api.parametros_ambientales.routes import parametros_bp
+from api.limites_ambientales.routes import limites_bp
 
 # --- verificación rápida de conexión (opcional, solo para debug al arrancar) ---
 with engine.connect() as con:
@@ -23,6 +24,7 @@ app.register_blueprint(estados_bp)
 app.register_blueprint(roles_bp)
 app.register_blueprint(mediciones_bp)
 app.register_blueprint(parametros_bp)
+app.register_blueprint(limites_bp)
 
 @app.get('/')
 def home():
