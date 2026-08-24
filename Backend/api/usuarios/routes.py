@@ -3,7 +3,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from extensions import engine
-from api.constants import ESTADO_ACTIVO, ESTADO_ELIMINADO
+from api.constants import NOMBRE_ESTADO_ACTIVO, NOMBRE_ESTADO_ELIMINADO
+from api.estados.helpers import obtener_id_estado
 
 usuarios_bp = Blueprint('usuarios', __name__, url_prefix='/api/usuarios')
 
@@ -20,7 +21,7 @@ def listar_usuarios():
     params = {}
     if not incluir_eliminados:
         query += " WHERE id_estado != :estado_eliminado"
-        params["estado_eliminado"] = ESTADO_ELIMINADO
+        params["estado_eliminado"] = obtener_id_estado(NOMBRE_ESTADO_ELIMINADO)
     query += " ORDER BY id_usuario"
 
     with engine.connect() as con:
@@ -69,7 +70,7 @@ def crear_usuario():
         "correo": data["correo"],
         "password_hash": data["password_hash"],  # recuerda hashear ANTES de llegar aquí
         "id_rol": data["id_rol"],
-        "id_estado": data.get("id_estado", ESTADO_ACTIVO),
+        "id_estado": data.get("id_estado", obtener_id_estado(NOMBRE_ESTADO_ACTIVO)),
     }
 
     try:
@@ -126,7 +127,8 @@ def eliminar_usuario(id_usuario):
         RETURNING id_usuario
     """
     with engine.begin() as con:
-        result = con.execute(text(query), {"estado_eliminado": ESTADO_ELIMINADO, "id": id_usuario})
+        estado_eliminado = obtener_id_estado(NOMBRE_ESTADO_ELIMINADO)
+        result = con.execute(text(query), {"estado_eliminado": estado_eliminado, "id": id_usuario})
         usuario = result.mappings().first()
 
     if usuario is None:
