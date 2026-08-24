@@ -5,6 +5,9 @@ from sqlalchemy.exc import IntegrityError
 from extensions import engine
 from api.constants import NOMBRE_ESTADO_ACTIVO, NOMBRE_ESTADO_ELIMINADO
 from api.estados.helpers import obtener_id_estado
+from api.auth_admin.client import crear_usuario_auth
+from api.constants import NOMBRE_ROL_EMPLEADO, NOMBRE_ESTADO_ACTIVO
+from api.roles.helpers import obtener_id_rol
 
 usuarios_bp = Blueprint('usuarios', __name__, url_prefix='/api/usuarios')
 
@@ -54,35 +57,45 @@ def obtener_usuario(id_usuario):
 def crear_usuario():
     data = request.get_json(silent=True) or {}
 
-    campos_requeridos = ["nombre", "apellido", "correo", "password_hash", "id_rol"]
+    campos_requeridos = ["nombre", "apellido", "correo"]
     faltantes = [c for c in campos_requeridos if not data.get(c)]
     if faltantes:
         return jsonify({"error": f"Faltan campos requeridos: {', '.join(faltantes)}"}), 400
 
+    if not data.get("password"):
+        return jsonify({"error": "El campo 'password' es requerido"}), 400
+
+    nombre_completo = f"{data['nombre']} {data['apellido']}"
+    password_temporal = data["password"]
+
+    try:
+        usuario_auth = crear_usuario_auth(
+            email=data["correo"],
+            password=password_temporal,
+            name=nombre_completo,
+        )
+    except Exception as e:
+        return jsonify({"error": f"No se pudo crear el usuario en Neon Auth: {e}"}), 502
+
     query = """
-        INSERT INTO usuarios (nombre, apellido, correo, password_hash, id_rol, id_estado)
-        VALUES (:nombre, :apellido, :correo, :password_hash, :id_rol, :id_estado)
-        RETURNING id_usuario, nombre, apellido, correo, id_rol, id_estado, fecha_registro
+        INSERT INTO usuarios (nombre, apellido, correo, id_rol, id_estado, auth_user_id)
+        VALUES (:nombre, :apellido, :correo, :id_rol, :id_estado, :auth_user_id)
+        RETURNING id_usuario, nombre, apellido, correo, id_rol, id_estado, auth_user_id
     """
     params = {
         "nombre": data["nombre"],
         "apellido": data["apellido"],
         "correo": data["correo"],
-        "password_hash": data["password_hash"],  # recuerda hashear ANTES de llegar aquí
-        "id_rol": data["id_rol"],
+        "id_rol": data.get("id_rol", obtener_id_rol(NOMBRE_ROL_EMPLEADO)),
         "id_estado": data.get("id_estado", obtener_id_estado(NOMBRE_ESTADO_ACTIVO)),
+        "auth_user_id": usuario_auth["id"],
     }
 
-    try:
-        with engine.begin() as con:
-            result = con.execute(text(query), params)
-            nuevo_usuario = result.mappings().first()
-    except IntegrityError:
-        # salta si el correo ya existe (UNIQUE) o si id_rol/id_estado no existen (FK)
-        return jsonify({"error": "Correo ya registrado o rol/estado inválido"}), 409
+    with engine.begin() as con:
+        result = con.execute(text(query), params)
+        nuevo_usuario = result.mappings().first()
 
     return jsonify(dict(nuevo_usuario)), 201
-
 
 # ---------- UPDATE ----------
 @usuarios_bp.put('/<int:id_usuario>')

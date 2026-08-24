@@ -1,10 +1,11 @@
-from flask import Flask
+from flask import Flask, render_template
 from sqlalchemy import text
 
 from extensions import engine
 from api.usuarios.routes import usuarios_bp
 from api.areas.routes import areas_bp
 from api.estados.routes import estados_bp
+from api.roles.routes import roles_bp
 
 # --- verificación rápida de conexión (opcional, solo para debug al arrancar) ---
 with engine.connect() as con:
@@ -17,11 +18,15 @@ app = Flask(__name__)
 app.register_blueprint(usuarios_bp)
 app.register_blueprint(areas_bp)
 app.register_blueprint(estados_bp)
+app.register_blueprint(roles_bp)
 
 @app.get('/')
 def home():
     return 'Hello, World!'
 
+@app.get('/formulario-usuario')
+def formulario_usuario():
+    return render_template('formulario_usuario.html')
 
 if __name__ == '__main__':
     app.run(debug=True)

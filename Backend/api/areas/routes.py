@@ -3,7 +3,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from extensions import engine
-from api.constants import ESTADO_ACTIVO, ESTADO_ELIMINADO
+from api.constants import NOMBRE_ESTADO_ACTIVO, NOMBRE_ESTADO_ELIMINADO
 
 areas_bp = Blueprint('areas', __name__, url_prefix='/api/areas')
 
@@ -23,7 +23,7 @@ def listar_areas():
     params = {}
     if not incluir_eliminadas:
         query += " WHERE a.id_estado != :estado_eliminado"
-        params["estado_eliminado"] = ESTADO_ELIMINADO
+        params["estado_eliminado"] = NOMBRE_ESTADO_ELIMINADO
     query += " ORDER BY a.id_area"
 
     with engine.connect() as con:
@@ -72,7 +72,7 @@ def crear_area():
         "descripcion": data.get("descripcion"),
         "ubicacion": data.get("ubicacion"),
         "responsable_id": data.get("responsable_id"),
-        "id_estado": data.get("id_estado", ESTADO_ACTIVO),
+        "id_estado": data.get("id_estado", NOMBRE_ESTADO_ACTIVO),
     }
 
     try:
@@ -128,7 +128,7 @@ def eliminar_area(id_area):
         RETURNING id_area
     """
     with engine.begin() as con:
-        result = con.execute(text(query), {"estado_eliminado": ESTADO_ELIMINADO, "id": id_area})
+        result = con.execute(text(query), {"estado_eliminado": NOMBRE_ESTADO_ELIMINADO, "id": id_area})
         area = result.mappings().first()
 
     if area is None:

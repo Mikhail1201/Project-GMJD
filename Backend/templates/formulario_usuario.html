@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Crear usuario (prueba)</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 400px;
+            margin: 40px auto;
+        }
+
+        label {
+            display: block;
+            margin-top: 12px;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 6px;
+            box-sizing: border-box;
+        }
+
+        button {
+            margin-top: 16px;
+            padding: 8px 16px;
+        }
+
+        #resultado {
+            margin-top: 20px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>Crear usuario (prueba)</h2>
+    <form id="form-usuario">
+        <label>Nombre <input type="text" name="nombre" required></label>
+        <label>Apellido <input type="text" name="apellido" required></label>
+        <label>Correo <input type="email" name="correo" required></label>
+        <label>Contraseña temporal
+            <input type="password" name="password" required minlength="8">
+        </label>
+        <label>Rol
+            <select name="id_rol" id="select-rol" required></select>
+        </label>
+
+        <label>Estado
+            <select name="id_estado" id="select-estado" required></select>
+        </label>
+
+        <button type="submit">Crear usuario</button>
+    </form>
+    <div id="resultado"></div>
+
+    <script>
+        // Convierte la lista de {id_rol, nombre} o {id_estado, nombre}
+        // en <option> dentro del <select> indicado.
+        async function poblarSelect(url, selectId, campoId) {
+            const select = document.getElementById(selectId);
+            try {
+                const resp = await fetch(url);
+                const items = await resp.json();
+                items.forEach(item => {
+                    const option = document.createElement('option');
+                    option.value = item[campoId];
+                    option.textContent = item.nombre;
+                    select.appendChild(option);
+                });
+            } catch (err) {
+                select.innerHTML = '<option value="">Error al cargar</option>';
+            }
+        }
+
+        poblarSelect('/api/roles/', 'select-rol', 'id_rol');
+        poblarSelect('/api/estados/', 'select-estado', 'id_estado');
+
+        document.getElementById('form-usuario').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const datos = Object.fromEntries(new FormData(e.target));
+            // id_rol e id_estado llegan como string desde el form, los convertimos a número
+            datos.id_rol = parseInt(datos.id_rol, 10);
+            datos.id_estado = parseInt(datos.id_estado, 10);
+
+            const resultadoDiv = document.getElementById('resultado');
+            resultadoDiv.textContent = 'Enviando...';
+
+            try {
+                const resp = await fetch('/api/usuarios/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(datos)
+                });
+                const data = await resp.json();
+                resultadoDiv.textContent = `Status: ${resp.status}\n` + JSON.stringify(data, null, 2);
+            } catch (err) {
+                resultadoDiv.textContent = 'Error: ' + err.message;
+            }
+        });
+    </script>
+</body>
+
+</html>
