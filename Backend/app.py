@@ -13,6 +13,7 @@ from api.mediciones.routes import mediciones_bp
 from api.modelos_ia.routes import modelos_ia_bp
 from api.predicciones_ia.routes import predicciones_bp
 from api.alertas.routes import alertas_bp
+from api.incidentes_ambientales.routes import incidentes_bp
 
 # --- verificación rápida de conexión (opcional, solo para debug al arrancar) ---
 with engine.connect() as con:
@@ -33,6 +34,7 @@ app.register_blueprint(mediciones_bp)
 app.register_blueprint(modelos_ia_bp)
 app.register_blueprint(predicciones_bp)
 app.register_blueprint(alertas_bp)
+app.register_blueprint(incidentes_bp)
 
 @app.get('/')
 def home():
