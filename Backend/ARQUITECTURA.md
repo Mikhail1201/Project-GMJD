@@ -8,6 +8,65 @@ para verlo en el repositorio.
 ## Flujo general de una petición
 
 ```mermaid
+flowchart LR
+    U["👤 Cliente<br/>Formulario / Frontend"]
+
+    subgraph APP["BACKEND — Flask"]
+        direction TB
+
+        API["🌐 API / Blueprints<br/><small>Validación · HTTP · JSON</small>"]
+
+        subgraph LOGIC["Lógica de aplicación"]
+            direction LR
+            REPO["🗄️ Repositories<br/><small>SQL + reglas de negocio</small>"]
+            CAT["📚 Catálogos<br/><small>IDs de rol / estado<br/>+ caché</small>"]
+            MODEL["📦 Models<br/><small>Dataclasses<br/>Fila ↔ objeto</small>"]
+        end
+
+        subgraph CORE["Infraestructura"]
+            direction LR
+            DB["⚙️ database.py<br/><small>SQLAlchemy Engine<br/>Pool de conexiones</small>"]
+            AUTH["🔐 auth.py<br/><small>NeonAuthClient</small>"]
+        end
+    end
+
+    PG[("🐘 PostgreSQL<br/>Neon")]
+    NA["🔑 Neon Auth<br/><small>Better Auth managed</small>"]
+
+    U -->|"HTTP + JSON"| API
+    API -->|"llama"| REPO
+    API -->|"usa"| MODEL
+
+    REPO -->|"resuelve IDs"| CAT
+    REPO -->|"SQL"| DB
+    CAT -->|"SQL"| DB
+    DB -->|"conexión pooled"| PG
+
+    API -.->|"solo al crear usuarios"| AUTH
+    AUTH -->|"REST API"| NA
+    NA -.->|"auth_user_id · UUID"| AUTH
+
+    API -->|"HTTP + JSON"| U
+
+    classDef client fill:#e8f0fe,stroke:#4285f4,stroke-width:2px,color:#1a1a1a
+    classDef api fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#0d47a1
+    classDef logic fill:#f3e8ff,stroke:#8e44ad,stroke-width:1.5px,color:#4a235a
+    classDef core fill:#fff3e0,stroke:#ef6c00,stroke-width:1.5px,color:#5d4037
+    classDef db fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+    classDef auth fill:#fff8e1,stroke:#f9a825,stroke-width:2px,color:#6d4c00
+
+    class U client
+    class API api
+    class REPO,CAT,MODEL logic
+    class DB,AUTH core
+    class PG db
+    class NA auth
+
+    style APP fill:#fafafa,stroke:#616161,stroke-width:2px
+    style LOGIC fill:#ffffff,stroke:#b39ddb,stroke-dasharray:5 5
+    style CORE fill:#ffffff,stroke:#ffb74d,stroke-dasharray:5 5
+```
+mermaid
 flowchart TD
     Cliente["Cliente<br/>(formulario HTML / futuro frontend)"]
 
