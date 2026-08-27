@@ -26,3 +26,6 @@ __pycache__/
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Reportes PDF generados por la app de escritorio
+Desktop/reportes/*.pdf

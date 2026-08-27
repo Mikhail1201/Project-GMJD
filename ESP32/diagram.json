@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "author": "Juan Bolivar",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": 28.8,
+      "left": -244.76,
+      "attrs": { "env": "micropython-20260406-v1.28.0" }
+    },
+    {
+      "type": "wokwi-lcd1602",
+      "id": "lcd1",
+      "top": -32,
+      "left": -90.4,
+      "attrs": { "pins": "i2c" }
+    },
+    {
+      "type": "wokwi-dht22",
+      "id": "dht1",
+      "top": 9.9,
+      "left": -331.8,
+      "attrs": { "temperature": "-40", "humidity": "0" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led1",
+      "top": 260.8,
+      "left": -139.8,
+      "rotate": 180,
+      "attrs": { "color": "red", "flip": "1" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led2",
+      "top": 251.2,
+      "left": -274.2,
+      "rotate": 180,
+      "attrs": { "color": "limegreen" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn1",
+      "top": 102.2,
+      "left": -76.8,
+      "attrs": { "color": "blue", "xray": "1" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn2",
+      "top": 188.6,
+      "left": -76.8,
+      "attrs": { "color": "yellow", "xray": "1" }
+    }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "lcd1:GND", "esp:GND.2", "black", [ "h0" ] ],
+    [ "dht1:VCC", "esp:3V3", "red", [ "v9.6", "h-28.8", "v-153.6", "h96" ] ],
+    [ "lcd1:SDA", "esp:21", "green", [ "h-28.8", "v86.6" ] ],
+    [ "lcd1:SCL", "esp:22", "blue", [ "h-9.6", "v48.3" ] ],
+    [ "dht1:SDA", "esp:15", "orange", [ "v124.8", "h201.7", "v-9.6" ] ],
+    [ "dht1:GND", "esp:GND.1", "black", [ "v0" ] ],
+    [ "lcd1:VCC", "esp:5V", "red", [ "h-144", "v-19.1", "h0", "v-28.8", "h-144", "v230.4" ] ],
+    [ "led2:C", "esp:GND.1", "green", [ "v0" ] ],
+    [ "led1:A", "esp:4", "green", [ "v0" ] ],
+    [ "led1:C", "esp:D2", "green", [ "v0", "h-163.2", "v-67.2" ] ],
+    [ "btn1:1.l", "esp:18", "green", [ "h-38.4", "v19.2" ] ],
+    [ "btn1:2.l", "esp:GND.2", "green", [ "h-28.8", "v-76.6" ] ],
+    [ "btn2:1.l", "esp:19", "green", [ "h-19.2", "v-48", "h-28.8", "v-28.8" ] ],
+    [ "btn2:2.l", "esp:GND.3", "green", [ "h-48", "v-105.4" ] ],
+    [ "led2:A", "esp:2", "green", [ "v0", "h124.8", "v-67.2" ] ]
+  ],
+  "dependencies": {}
+}

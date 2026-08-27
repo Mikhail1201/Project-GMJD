@@ -1,5 +1,8 @@
+import logging
+
 from flask import Flask, jsonify, render_template
 from sqlalchemy import text
+from werkzeug.exceptions import HTTPException
 
 from app.core.database import engine
 from app.api import (
@@ -11,6 +14,28 @@ from app.api import (
 
 def create_app() -> Flask:
     app = Flask(__name__)
+
+    # Sin esto, con debug=True cualquier excepcion no controlada (ej. se
+    # cae la conexion a Neon) devuelve la pagina HTML interactiva del
+    # depurador de Werkzeug en vez de un error JSON. Eso rompe a cualquier
+    # cliente que espere JSON (la app de escritorio terminaba mostrando
+    # el HTML crudo en pantalla). El traceback completo se sigue viendo
+    # en la consola donde corre el backend (app.logger.exception abajo).
+    app.config["PROPAGATE_EXCEPTIONS"] = False
+
+    @app.errorhandler(Exception)
+    def manejar_error_no_controlado(error):
+        # Los errores HTTP normales (404, 405, 400 por abort(), etc.) deben
+        # conservar su codigo real; solo las excepciones genuinamente no
+        # controladas (crash real, ej. se cae la conexion a Neon) caen
+        # como 500 con el tipo y mensaje de la excepcion.
+        if isinstance(error, HTTPException):
+            return jsonify({"error": error.description}), error.code
+
+        app.logger.exception("Excepcion no controlada en %s", error)
+        return jsonify({
+            "error": f"{type(error).__name__}: {error}",
+        }), 500
 
     app.register_blueprint(usuarios_bp)
     app.register_blueprint(roles_bp)
