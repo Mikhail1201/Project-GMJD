@@ -100,7 +100,7 @@ NEON_AUTH_ADMIN_PASSWORD=contraseña-de-la-cuenta-tecnica
 específicamente para que el backend administre usuarios — no es la cuenta
 personal de ningún desarrollador. Debe tener rol admin asignado desde el
 Console de Neon (Auth → Users → **Make admin**), y el origen desde el que corre
-el backend (ej. `http://localhost:5000`) debe estar en la lista de **Trusted
+el backend (ej. `http://localhost:8000`) debe estar en la lista de **Trusted
 origins** del proyecto en Neon Auth (Console → Auth → Configuration).
 
 ## Ejecutar el servidor
@@ -112,10 +112,10 @@ python main.py
 También es válido usar:
 
 ```bash
-flask run
+flask --app app run --host=0.0.0.0 --port=8000
 ```
 
-Por defecto corre en `http://localhost:5000` con `debug=True`.
+Por defecto corre en `http://localhost:8000` con `debug=True`.
 
 - `GET /health` — verifica la conexión a la base de datos
 - `GET /formulario-usuario` — formulario de prueba para crear un usuario
