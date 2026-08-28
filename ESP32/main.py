@@ -189,8 +189,8 @@ class EnvironmentalSensors:
     # Rango de referencia en ppm que ya usaban las alertas y el resto
     # del sistema (mismo rango que la version anterior simulada con
     # urandom): 15 ppm = "aire limpio" / linea base, 650 ppm = tope
-    # del sensor. LIMIT_GAS_PPM (400) cae comodamente dentro de este
-    # rango.
+    # del sensor. El limite de alerta de MonomerosController.LIMIT_GAS_MAX
+    # (400) cae comodamente dentro de este rango.
     GAS_PPM_MIN = 15.0
     GAS_PPM_MAX = 650.0
 
@@ -238,11 +238,6 @@ class EnvironmentalSensors:
         # ------------------------------------------------------
 
         self.gas_baseline_raw = self._leer_gas_adc_promedio()
-
-        print(
-            "[SENSOR] Linea base MQ-2 (ADC):",
-            self.gas_baseline_raw
-        )
 
     def _leer_gas_adc_promedio(self, muestras: int = 30):
 
@@ -368,14 +363,6 @@ class EnvironmentalSensors:
         else:
 
             calidad_gas = CALIDAD_VALIDA
-
-        print(
-            "[SENSOR] MQ-2 -> ADC={} (base {:.0f}) Gas={:.2f} ppm".format(
-                gas_raw,
-                self.gas_baseline_raw,
-                gas_ppm
-            )
-        )
 
         return (
             temp_c,
@@ -519,6 +506,67 @@ class UserInterfaceManager:
                 repr(e)
             )
 
+    def mostrar_area_confirmada(self, id_area: int):
+
+        try:
+
+            self.lcd.clear()
+
+            self.lcd.move_to(0, 0)
+
+            self.lcd.putstr(
+                "AREA CONFIRMADA:"
+            )
+
+            self.lcd.move_to(0, 1)
+
+            self.lcd.putstr(
+                "ID = {}".format(
+                    id_area
+                )
+            )
+
+            utime.sleep_ms(1000)
+
+            self.lcd.clear()
+
+        except Exception as e:
+
+            print(
+                "[LCD] Error:",
+                repr(e)
+            )
+
+    def mostrar_entrada_area(self, buffer: str):
+
+        # Se llama en vivo mientras se teclea (sin sleep_ms, para no
+        # bloquear el loop): cada digito nuevo se ve de inmediato,
+        # antes de presionar "#". No hace lcd.clear() completo, solo
+        # reescribe ambas lineas ya rellenas a 16 espacios, para que
+        # no queden restos de la pantalla normal (T:.. / Gas:..).
+        try:
+
+            self.lcd.move_to(0, 0)
+
+            self.lcd.putstr(
+                "INGRESA AREA:   "
+            )
+
+            self.lcd.move_to(0, 1)
+
+            self.lcd.putstr(
+                "{:<16}".format(
+                    buffer + "_"
+                )
+            )
+
+        except Exception as e:
+
+            print(
+                "[LCD] Error:",
+                repr(e)
+            )
+
     def render_display(
         self,
         temp: float,
@@ -579,6 +627,187 @@ class UserInterfaceManager:
 
 
 # ==================================================================
+# PARTE 3.5: SELECTOR DE AREA (TECLADO MATRICIAL 4x4)
+# ==================================================================
+
+class AreaSelector:
+    """Lee un teclado matricial (wokwi-membrane-keypad, 4x4) y deja
+    escribir el id_area directamente por teclado, en vez de calcular
+    binario con switches.
+
+    Uso: se teclean 1 o 2 digitos con el numero del area y se
+    confirma con "#". Si el numero cae dentro del rango real de la
+    tabla "areas" (ver Backend -> GET /api/areas/), se actualiza el
+    area activa; si no, se rechaza y se mantiene la anterior. La
+    tecla "*" borra lo que se lleva tecleado (por si te equivocas).
+
+    escanear() se llama en cada vuelta del loop principal (barre
+    filas/columnas, con anti-rebote simple). leer_area() solo
+    devuelve el ultimo valor confirmado con "#" — no bloquea nunca
+    esperando tecla.
+    """
+
+    FILAS = ["1", "2", "3", "A", "4", "5", "6", "B",
+             "7", "8", "9", "C", "*", "0", "#", "D"]
+
+    def __init__(
+        self,
+        pines_filas: list,
+        pines_columnas: list,
+        area_minima: int,
+        area_maxima: int,
+        area_por_defecto: int,
+        al_confirmar=None,
+        al_escribir=None
+    ):
+
+        self.filas = [
+            Pin(pin, Pin.OUT)
+            for pin in pines_filas
+        ]
+
+        for fila in self.filas:
+
+            fila.value(1)
+
+        self.columnas = [
+            Pin(pin, Pin.IN, Pin.PULL_UP)
+            for pin in pines_columnas
+        ]
+
+        self.area_minima = area_minima
+        self.area_maxima = area_maxima
+        self.area_actual = area_por_defecto
+
+        # Funcion opcional que se llama con el id_area cada vez que
+        # se confirma con "#" (sin importar si es igual o distinta a
+        # la anterior) — para dar feedback visible (ej. en el LCD)
+        # de que la tecla si se registro.
+        self.al_confirmar = al_confirmar
+
+        # Funcion opcional que se llama con el buffer actual (texto
+        # que se lleva tecleado) cada vez que cambia, para mostrarlo
+        # en vivo en el LCD mientras se escribe, antes de confirmar
+        # con "#".
+        self.al_escribir = al_escribir
+
+        self._buffer = ""
+        self._tecla_anterior = None
+
+    def _leer_tecla(self):
+
+        # Barrido clasico de matriz: se pone en LOW una fila a la
+        # vez (las demas en HIGH) y se revisa que columna quedo en
+        # LOW (por el pull-up, una columna sin tecla presionada se
+        # queda en HIGH).
+        for i, fila in enumerate(self.filas):
+
+            fila.value(0)
+
+            for j, columna in enumerate(self.columnas):
+
+                if columna.value() == 0:
+
+                    fila.value(1)
+
+                    return self.FILAS[i * 4 + j]
+
+            fila.value(1)
+
+        return None
+
+    def escanear(self):
+
+        tecla = self._leer_tecla()
+
+        # Anti-rebote simple: solo procesar el FLANCO de presionar
+        # (nada -> tecla), no mientras se mantiene apretada.
+        if tecla == self._tecla_anterior:
+
+            return
+
+        self._tecla_anterior = tecla
+
+        if tecla is None:
+
+            return
+
+        if tecla == "*":
+
+            self._buffer = ""
+
+            self._avisar_buffer()
+
+        elif tecla == "#":
+
+            self._confirmar_area()
+
+        elif tecla in "0123456789":
+
+            # Maximo 2 digitos (areas van de 1 a 99): al llegar al
+            # tercero, se reinicia el buffer con el nuevo digito en
+            # vez de seguir acumulando sin sentido.
+            if len(self._buffer) >= 2:
+
+                self._buffer = tecla
+
+            else:
+
+                self._buffer += tecla
+
+            self._avisar_buffer()
+
+        # A/B/C/D no se usan para nada (el keypad de Wokwi las trae
+        # por defecto); se ignoran silenciosamente.
+
+    def _avisar_buffer(self):
+
+        if self.al_escribir is not None:
+
+            self.al_escribir(
+                self._buffer
+            )
+
+    def esta_escribiendo(self):
+
+        return len(self._buffer) > 0
+
+    def buffer_actual(self):
+
+        return self._buffer
+
+    def _confirmar_area(self):
+
+        if not self._buffer:
+
+            return
+
+        try:
+
+            valor = int(self._buffer)
+
+        except ValueError:
+
+            valor = -1
+
+        if self.area_minima <= valor <= self.area_maxima:
+
+            self.area_actual = valor
+
+            if self.al_confirmar is not None:
+
+                self.al_confirmar(
+                    self.area_actual
+                )
+
+        self._buffer = ""
+
+    def leer_area(self):
+
+        return self.area_actual
+
+
+# ==================================================================
 # PARTE 4: CONTROLADOR PRINCIPAL
 # ==================================================================
 
@@ -586,17 +815,35 @@ class MonomerosController:
     """Controlador principal del sistema IoT."""
 
     # --------------------------------------------------------------
-    # UMBRALES
+    # UMBRALES (minimo y maximo para los 3 parametros que manda el
+    # ESP32). Estos valores son EXACTAMENTE los que ya tiene
+    # configurados la tabla parametros_ambientales en la base de
+    # datos (ver GET /api/parametros-ambientales/) para que la
+    # alerta del ESP32 coincida con lo que la app de escritorio
+    # dibuja en los gauges como "zona segura".
     # --------------------------------------------------------------
 
-    LIMIT_GAS_PPM = 400.0
-    LIMIT_TEMP_C = 45.0
+    LIMIT_TEMP_MIN = 15.0
+    LIMIT_TEMP_MAX = 45.0
+
+    LIMIT_HUM_MIN = 20.0
+    LIMIT_HUM_MAX = 90.0
+
+    LIMIT_GAS_MIN = 0.0
+    LIMIT_GAS_MAX = 400.0
 
     # --------------------------------------------------------------
     # IDs DE ÁREA
+    #
+    # Ya no es fijo: se lee del DIP switch del diagrama (ver
+    # AreaSelector) en cada ciclo, dentro de este rango. Ajusta
+    # AREA_MAXIMA si tu tabla "areas" tiene mas o menos filas
+    # (ver GET /api/areas/).
     # --------------------------------------------------------------
 
-    ID_AREA = 2
+    AREA_MINIMA = 1
+    AREA_MAXIMA = 20
+    AREA_POR_DEFECTO = 1
 
     # --------------------------------------------------------------
     # IDs DE PARÁMETROS
@@ -645,6 +892,22 @@ class MonomerosController:
             scl_pin=22,
             led_green_pin=2,
             led_red_pin=4
+        )
+
+        # ----------------------------------------------------------
+        # SELECTOR DE AREA (teclado matricial, ver diagram.json:
+        # keypad1). al_confirmar apunta al LCD para dar feedback
+        # visible en el circuito, no solo en la consola.
+        # ----------------------------------------------------------
+
+        self.area_selector = AreaSelector(
+            pines_filas=[5, 13, 14, 27],
+            pines_columnas=[26, 25, 33, 32],
+            area_minima=self.AREA_MINIMA,
+            area_maxima=self.AREA_MAXIMA,
+            area_por_defecto=self.AREA_POR_DEFECTO,
+            al_confirmar=self.ui.mostrar_area_confirmada,
+            al_escribir=self.ui.mostrar_entrada_area
         )
 
         # ----------------------------------------------------------
@@ -721,7 +984,7 @@ class MonomerosController:
         return {
 
             "id_area":
-                self.ID_AREA,
+                self.area_selector.leer_area(),
 
             "id_parametro":
                 id_parametro,
@@ -923,7 +1186,7 @@ class MonomerosController:
                 id_medicion,
 
             "id_area":
-                self.ID_AREA,
+                self.area_selector.leer_area(),
 
             "tipo_alerta":
                 tipo_alerta,
@@ -989,6 +1252,60 @@ class MonomerosController:
             )
 
     # ==================================================================
+    # VERIFICAR RANGO Y ALERTAR (minimo o maximo, para cualquier
+    # parametro) — usado por los 3 (temperatura, humedad y gas) para
+    # no repetir el mismo bloque de codigo 6 veces.
+    # ==================================================================
+
+    def _verificar_y_alertar(
+        self,
+        id_medicion,
+        valor,
+        minimo,
+        maximo,
+        nombre_parametro,
+        unidad
+    ):
+
+        if valor > maximo:
+
+            self.send_alert(
+
+                id_medicion,
+
+                "Desviacion de {} (alto)".format(
+                    nombre_parametro
+                ),
+
+                "{} de {:.1f} {} supera el limite maximo de {:.1f} {}".format(
+                    nombre_parametro,
+                    valor,
+                    unidad,
+                    maximo,
+                    unidad
+                )
+            )
+
+        elif valor < minimo:
+
+            self.send_alert(
+
+                id_medicion,
+
+                "Desviacion de {} (bajo)".format(
+                    nombre_parametro
+                ),
+
+                "{} de {:.1f} {} esta por debajo del limite minimo de {:.1f} {}".format(
+                    nombre_parametro,
+                    valor,
+                    unidad,
+                    minimo,
+                    unidad
+                )
+            )
+
+    # ==================================================================
     # TRANSMITIR LOTE
     # ==================================================================
 
@@ -1009,6 +1326,11 @@ class MonomerosController:
 
         print(
             "[HTTP] TRANSMITIENDO LOTE"
+        )
+
+        print(
+            "Area seleccionada (teclado):",
+            self.area_selector.leer_area()
         )
 
         print(
@@ -1058,11 +1380,20 @@ class MonomerosController:
             calidad_ambiente
         )
 
+        # Escanear el teclado entre cada POST: cada llamada HTTP
+        # bloquea el programa mientras espera respuesta del backend
+        # (puede ser un buen rato); sin esto, un lote de 3-5
+        # peticiones seguidas dejaria el teclado "sordo" por toda esa
+        # ventana de tiempo en vez de solo por cada peticion individual.
+        self.area_selector.escanear()
+
         id_med_hum = self.send_measurement(
             self.PARAM_HUMEDAD,
             hum,
             calidad_ambiente
         )
+
+        self.area_selector.escanear()
 
         # ----------------------------------------------------------
         # GAS (MQ-2 real por ADC)
@@ -1078,41 +1409,42 @@ class MonomerosController:
             calidad_gas
         )
 
-        # ----------------------------------------------------------
-        # ALERTA TEMPERATURA
-        # ----------------------------------------------------------
-
-        if temp > self.LIMIT_TEMP_C:
-
-            self.send_alert(
-
-                id_med_temp,
-
-                "Desviacion de Temperatura Ambiente",
-
-                "Temperatura de {:.1f} C supera el limite de {:.1f} C".format(
-                    temp,
-                    self.LIMIT_TEMP_C
-                )
-            )
+        self.area_selector.escanear()
 
         # ----------------------------------------------------------
-        # ALERTA GAS
+        # ALERTAS (minimo y maximo, para los 3 parametros)
         # ----------------------------------------------------------
 
-        if gas > self.LIMIT_GAS_PPM:
+        self._verificar_y_alertar(
+            id_med_temp,
+            temp,
+            self.LIMIT_TEMP_MIN,
+            self.LIMIT_TEMP_MAX,
+            "Temperatura Ambiente",
+            "C"
+        )
 
-            self.send_alert(
+        self.area_selector.escanear()
 
-                id_med_gas,
+        self._verificar_y_alertar(
+            id_med_hum,
+            hum,
+            self.LIMIT_HUM_MIN,
+            self.LIMIT_HUM_MAX,
+            "Humedad Relativa",
+            "%"
+        )
 
-                "Desviacion de Gas Amoniaco (NH3)",
+        self.area_selector.escanear()
 
-                "Gas NH3 de {:.1f} ppm supera el limite de {:.1f} ppm".format(
-                    gas,
-                    self.LIMIT_GAS_PPM
-                )
-            )
+        self._verificar_y_alertar(
+            id_med_gas,
+            gas,
+            self.LIMIT_GAS_MIN,
+            self.LIMIT_GAS_MAX,
+            "Gas Amoniaco (NH3)",
+            "ppm"
+        )
 
         print()
         print(
@@ -1284,13 +1616,18 @@ class MonomerosController:
 
             is_critical = (
 
-                gas >
-                self.LIMIT_GAS_PPM
+                gas > self.LIMIT_GAS_MAX
+                or gas < self.LIMIT_GAS_MIN
 
                 or
 
-                temp >
-                self.LIMIT_TEMP_C
+                temp > self.LIMIT_TEMP_MAX
+                or temp < self.LIMIT_TEMP_MIN
+
+                or
+
+                hum > self.LIMIT_HUM_MAX
+                or hum < self.LIMIT_HUM_MIN
             )
 
             # ======================================================
@@ -1305,12 +1642,32 @@ class MonomerosController:
             # LCD
             # ======================================================
 
-            self.ui.render_display(
-                temp,
-                hum,
-                gas,
-                is_critical
-            )
+            # ======================================================
+            # TECLADO - SELECCION DE AREA
+            #
+            # Se escanea ANTES de decidir que mostrar en el LCD: si
+            # hay algo tecleado (buffer no vacio), se muestra eso en
+            # vez de la pantalla normal de T/H/Gas, para poder ver
+            # el numero mientras se escribe, antes de confirmar con
+            # "#".
+            # ======================================================
+
+            self.area_selector.escanear()
+
+            if self.area_selector.esta_escribiendo():
+
+                self.ui.mostrar_entrada_area(
+                    self.area_selector.buffer_actual()
+                )
+
+            else:
+
+                self.ui.render_display(
+                    temp,
+                    hum,
+                    gas,
+                    is_critical
+                )
 
             # ======================================================
             # BOTÓN AZUL - CAMBIAR PANTALLA

@@ -57,17 +57,26 @@
     {
       "type": "wokwi-gas-sensor",
       "id": "gas1",
-      "top": 120,
-      "left": -420,
+      "top": -170.1,
+      "left": -559.4,
       "attrs": { "ppm": "15", "threshold": "4.4" }
-    }
+    },
+    { "type": "wokwi-membrane-keypad", "id": "keypad1", "top": -2, "left": -810.4, "attrs": {} }
   ],
   "connections": [
     [ "esp:TX", "$serialMonitor:RX", "", [] ],
     [ "esp:RX", "$serialMonitor:TX", "", [] ],
-    [ "gas1:VCC", "esp:3V3", "red", [] ],
-    [ "gas1:GND", "esp:GND.1", "black", [] ],
-    [ "gas1:AO", "esp:34", "orange", [] ],
+    [ "gas1:VCC", "esp:3V3", "red", [ "v20", "h280", "v-300" ] ],
+    [ "gas1:GND", "esp:GND.1", "black", [ "v40", "h260", "v-260" ] ],
+    [ "gas1:AOUT", "esp:34", "orange", [ "v60", "h76.8", "v-117.6" ] ],
+    [ "keypad1:R1", "esp:5", "purple", [ "v-20", "h201.6", "v-172" ] ],
+    [ "keypad1:R2", "esp:13", "purple", [ "v-10", "h201.2", "v-134" ] ],
+    [ "keypad1:R3", "esp:14", "purple", [ "h210.9", "v-172.8" ] ],
+    [ "keypad1:R4", "esp:27", "purple", [ "v10", "h220.6", "v-192.4" ] ],
+    [ "keypad1:C1", "esp:26", "blue", [ "v20", "h230.3", "v-212" ] ],
+    [ "keypad1:C2", "esp:25", "blue", [ "v30", "h240", "v-231.6" ] ],
+    [ "keypad1:C3", "esp:33", "blue", [ "v40", "h249.45", "v-251.2" ] ],
+    [ "keypad1:C4", "esp:32", "blue", [ "v50", "h268.5", "v-270.8" ] ],
     [ "lcd1:GND", "esp:GND.2", "black", [ "h0" ] ],
     [ "dht1:VCC", "esp:3V3", "red", [ "v9.6", "h-28.8", "v-153.6", "h96" ] ],
     [ "lcd1:SDA", "esp:21", "green", [ "h-28.8", "v86.6" ] ],

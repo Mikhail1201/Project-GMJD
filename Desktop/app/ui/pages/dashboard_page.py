@@ -32,7 +32,6 @@ PARAMETROS_EN_TABLERO = [
     "Temperatura Ambiente",
     "Humedad Relativa",
     "Gas Amoniaco (NH3)",
-    "Nivel de Ruido",
 ]
 
 
