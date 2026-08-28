@@ -22,7 +22,7 @@
       "id": "dht1",
       "top": 9.9,
       "left": -331.8,
-      "attrs": { "temperature": "-40", "humidity": "0" }
+      "attrs": { "temperature": "25", "humidity": "50" }
     },
     {
       "type": "wokwi-led",
@@ -53,11 +53,21 @@
       "top": 188.6,
       "left": -76.8,
       "attrs": { "color": "yellow", "xray": "1" }
+    },
+    {
+      "type": "wokwi-gas-sensor",
+      "id": "gas1",
+      "top": 120,
+      "left": -420,
+      "attrs": { "ppm": "15", "threshold": "4.4" }
     }
   ],
   "connections": [
     [ "esp:TX", "$serialMonitor:RX", "", [] ],
     [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "gas1:VCC", "esp:3V3", "red", [] ],
+    [ "gas1:GND", "esp:GND.1", "black", [] ],
+    [ "gas1:AO", "esp:34", "orange", [] ],
     [ "lcd1:GND", "esp:GND.2", "black", [ "h0" ] ],
     [ "dht1:VCC", "esp:3V3", "red", [ "v9.6", "h-28.8", "v-153.6", "h96" ] ],
     [ "lcd1:SDA", "esp:21", "green", [ "h-28.8", "v86.6" ] ],

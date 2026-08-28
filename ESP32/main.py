@@ -11,8 +11,7 @@ import network
 import urequests
 import ujson
 import utime
-import urandom
-from machine import Pin, I2C
+from machine import Pin, I2C, ADC
 import dht
 from i2c_lcd import I2cLcd
 
@@ -25,23 +24,24 @@ WIFI_SSID = "Wokwi-GUEST"
 WIFI_PASSWORD = ""
 
 # --------------------------------------------------------------
-# LOCAL TUNNEL
+# CONEXION AL BACKEND LOCAL
 # --------------------------------------------------------------
+#
+# host.wokwi.internal es un hostname especial que el simulador de
+# Wokwi (web y extension de VS Code) resuelve automaticamente hacia
+# el "localhost" real de la maquina donde corre la simulacion. Ya no
+# hace falta LocalTunnel ni ninguna URL publica: solo se necesita el
+# backend Flask corriendo en esa misma maquina, escuchando en todas
+# las interfaces (0.0.0.0), no solo en 127.0.0.1:
 #
 # Windows:
 #
 # Flask:
 #   flask --app app run --host=0.0.0.0 --port=8000
 #
-# LocalTunnel:
-#   lt --port 8000
-#
-# URL obtenida:
-#   https://upset-suits-read.loca.lt
-#
 # --------------------------------------------------------------
 
-API_BASE_URL = "http://localhost:8000/api"
+API_BASE_URL = "http://host.wokwi.internal:8000/api"
 
 # --------------------------------------------------------------
 # VALORES VALIDOS DE calidad_dato (ver Backend/app/repositories/
@@ -181,16 +181,85 @@ class NetworkManager:
 # ==================================================================
 
 class EnvironmentalSensors:
-    """Gestiona DHT22 y simulación del sensor de gas."""
+    """Gestiona DHT22 (temperatura/humedad) y MQ-2 (gas, wokwi-gas-sensor)."""
 
-    def __init__(self, pin_dht: int):
+    # ADC de 12 bits (0-4095) sobre un rango de 0-3.3V.
+    ADC_MAX = 4095
+
+    # Rango de referencia en ppm que ya usaban las alertas y el resto
+    # del sistema (mismo rango que la version anterior simulada con
+    # urandom): 15 ppm = "aire limpio" / linea base, 650 ppm = tope
+    # del sensor. LIMIT_GAS_PPM (400) cae comodamente dentro de este
+    # rango.
+    GAS_PPM_MIN = 15.0
+    GAS_PPM_MAX = 650.0
+
+    def __init__(self, pin_dht: int, pin_gas: int):
 
         self.dht_device = dht.DHT22(
             Pin(pin_dht)
         )
 
-        # Valor inicial de gas
-        self.current_gas_ppm = 45.0
+        self.gas_adc = ADC(
+            Pin(pin_gas)
+        )
+
+        # ADC1 (GPIO32-39): atenuacion de 11dB para leer todo el
+        # rango 0-3.3V (por defecto solo llega limpio hasta ~1.1V).
+        self.gas_adc.atten(
+            ADC.ATTN_11DB
+        )
+
+        # Se calibra despues, con calibrar_linea_base() — ver el
+        # porque en ese metodo.
+        self.gas_baseline_raw = 0
+
+    def calibrar_linea_base(self):
+
+        # ------------------------------------------------------
+        # CALIBRACION EN "AIRE LIMPIO"
+        #
+        # El sensor de gas de Wokwi (como un MQ-2 real) NO entrega
+        # 0V con poco gas: tiene un voltaje base propio en reposo.
+        # Por eso no sirve asumir una escala fija (0V=0ppm,
+        # 3.3V=maximo); en vez de eso, se toma una lectura de
+        # referencia y luego el ppm se calcula en funcion de cuanto
+        # se aleja la lectura actual de esa base. Es exactamente
+        # como se calibra un MQ-2 real (R0 en aire limpio).
+        #
+        # IMPORTANTE: esto se llama DESPUES de conectar el Wi-Fi
+        # (no en __init__, que corre antes). El Wi-Fi activo mete
+        # interferencia de RF al ADC del ESP32 y baja las lecturas
+        # de forma sistematica; si la base se calibra con el radio
+        # apagado y despues se compara contra lecturas con el radio
+        # prendido, TODO sale por debajo de la base sin importar el
+        # gas real (eso fue exactamente el bug reportado: base=2543
+        # con Wi-Fi apagado, lecturas 1800-2300 con Wi-Fi activo).
+        # ------------------------------------------------------
+
+        self.gas_baseline_raw = self._leer_gas_adc_promedio()
+
+        print(
+            "[SENSOR] Linea base MQ-2 (ADC):",
+            self.gas_baseline_raw
+        )
+
+    def _leer_gas_adc_promedio(self, muestras: int = 30):
+
+        # El ADC del ESP32 en los pines 32-39 es ruidoso, sobre todo
+        # con el Wi-Fi activo (interferencia de RF): una sola lectura
+        # puede variar bastante entre llamadas aunque nada cambie
+        # fisicamente. Promediar varias muestras seguidas suaviza
+        # ese ruido para que el valor refleje el gas real y no el
+        # ruido del ADC.
+
+        total = 0
+
+        for _ in range(muestras):
+
+            total += self.gas_adc.read()
+
+        return total / muestras
 
     def read_telemetry(self):
 
@@ -242,31 +311,78 @@ class EnvironmentalSensors:
             calidad_ambiente = CALIDAD_INVALIDA
 
         # ----------------------------------------------------------
-        # SIMULACIÓN GAS
+        # GAS (MQ-2 real por ADC, calibrado contra la linea base)
         # ----------------------------------------------------------
 
-        delta = (
-            urandom.getrandbits(8)
-            / 255.0
-            * 6.0
-        ) - 3.0
+        gas_raw = self._leer_gas_adc_promedio()
 
-        self.current_gas_ppm += delta
+        # AUTO-CERO: si aparece una lectura mas baja que la linea
+        # base actual, la base baja hasta ahi. Esto compensa que el
+        # sensor derive/baje con el tiempo despues del arranque (la
+        # foto de calibracion inicial puede quedar mas alta de lo
+        # normal y bloquear todo para siempre si no se ajusta sola).
+        if gas_raw < self.gas_baseline_raw:
 
-        # Limitar gas
-        if self.current_gas_ppm < 15.0:
+            self.gas_baseline_raw = gas_raw
 
-            self.current_gas_ppm = 15.0
+        rango_disponible = (
+            self.ADC_MAX
+            - self.gas_baseline_raw
+        )
 
-        elif self.current_gas_ppm > 650.0:
+        if rango_disponible <= 0:
 
-            self.current_gas_ppm = 650.0
+            fraccion = 0.0
+
+        else:
+
+            fraccion = (
+                (gas_raw - self.gas_baseline_raw)
+                / rango_disponible
+            )
+
+            # Limitar entre 0 y 1 (por debajo de la linea base o por
+            # encima del maximo del ADC no deben dar valores fuera
+            # de rango).
+            if fraccion < 0.0:
+
+                fraccion = 0.0
+
+            elif fraccion > 1.0:
+
+                fraccion = 1.0
+
+        gas_ppm = (
+            self.GAS_PPM_MIN
+            + fraccion
+            * (self.GAS_PPM_MAX - self.GAS_PPM_MIN)
+        )
+
+        # calidad_gas: si el ADC queda pegado en 0 o en el maximo, lo
+        # mas probable es que el sensor este desconectado o mal
+        # cableado, no que de verdad haya ese nivel de gas.
+        if gas_raw <= 0 or gas_raw >= self.ADC_MAX:
+
+            calidad_gas = CALIDAD_SOSPECHOSA
+
+        else:
+
+            calidad_gas = CALIDAD_VALIDA
+
+        print(
+            "[SENSOR] MQ-2 -> ADC={} (base {:.0f}) Gas={:.2f} ppm".format(
+                gas_raw,
+                self.gas_baseline_raw,
+                gas_ppm
+            )
+        )
 
         return (
             temp_c,
             hum_pct,
-            self.current_gas_ppm,
-            calidad_ambiente
+            gas_ppm,
+            calidad_ambiente,
+            calidad_gas
         )
 
 
@@ -516,7 +632,8 @@ class MonomerosController:
         # ----------------------------------------------------------
 
         self.sensors = EnvironmentalSensors(
-            pin_dht=15
+            pin_dht=15,
+            pin_gas=34
         )
 
         # ----------------------------------------------------------
@@ -558,6 +675,27 @@ class MonomerosController:
         )
 
         self.transmission_interval_ms = 5000
+
+        # ----------------------------------------------------------
+        # LECTURA DE SENSORES (throttle)
+        #
+        # El DHT22 necesita al menos ~2s entre lecturas; si se llama
+        # measure() en cada vuelta del loop (cada 50ms) responde con
+        # datos invalidos (T=-40.00 C, H=0.00 %) sin lanzar excepcion.
+        # Por eso se cachea la ultima lectura y solo se refresca cada
+        # sensor_read_interval_ms.
+        # ----------------------------------------------------------
+
+        self.sensor_read_interval_ms = 2000
+
+        self.last_sensor_read_time = (
+            utime.ticks_ms()
+            - self.sensor_read_interval_ms
+        )
+
+        self.last_telemetry = (
+            25.0, 50.0, 45.0, CALIDAD_INVALIDA, CALIDAD_INVALIDA
+        )
 
     # ==================================================================
     # CREAR PAYLOAD
@@ -740,7 +878,8 @@ class MonomerosController:
             )
 
             print(
-                "[HTTP] Verifique que LocalTunnel este activo."
+                "[HTTP] Verifique que el backend Flask este activo "
+                "(--host=0.0.0.0 --port=8000)."
             )
 
             print(
@@ -859,6 +998,7 @@ class MonomerosController:
         hum,
         gas,
         calidad_ambiente,
+        calidad_gas,
         alert
     ):
 
@@ -925,16 +1065,17 @@ class MonomerosController:
         )
 
         # ----------------------------------------------------------
-        # GAS
+        # GAS (MQ-2 real por ADC)
         #
-        # Siempre es la simulacion logica (no depende del DHT22), asi
-        # que siempre se manda como "valida".
+        # calidad_gas viene de EnvironmentalSensors.read_telemetry():
+        # "sospechosa" si el ADC quedo pegado en 0 o en el maximo
+        # (sensor probablemente desconectado), "valida" en caso normal.
         # ----------------------------------------------------------
 
         id_med_gas = self.send_measurement(
             self.PARAM_GAS,
             gas,
-            CALIDAD_VALIDA
+            calidad_gas
         )
 
         # ----------------------------------------------------------
@@ -1073,6 +1214,14 @@ class MonomerosController:
             )
 
         # ----------------------------------------------------------
+        # CALIBRAR SENSOR DE GAS (con el Wi-Fi ya en su estado
+        # definitivo, para que la linea base y las lecturas normales
+        # se tomen en las mismas condiciones de ruido de RF)
+        # ----------------------------------------------------------
+
+        self.sensors.calibrar_linea_base()
+
+        # ----------------------------------------------------------
         # LCD
         # ----------------------------------------------------------
 
@@ -1105,11 +1254,28 @@ class MonomerosController:
                 self.network.connect()
 
             # ======================================================
-            # SENSORES
+            # SENSORES (respeta el intervalo minimo del DHT22)
             # ======================================================
 
-            temp, hum, gas, calidad_ambiente = (
-                self.sensors.read_telemetry()
+            now_sensor = utime.ticks_ms()
+
+            if (
+                utime.ticks_diff(
+                    now_sensor,
+                    self.last_sensor_read_time
+                )
+                >=
+                self.sensor_read_interval_ms
+            ):
+
+                self.last_sensor_read_time = now_sensor
+
+                self.last_telemetry = (
+                    self.sensors.read_telemetry()
+                )
+
+            temp, hum, gas, calidad_ambiente, calidad_gas = (
+                self.last_telemetry
             )
 
             # ======================================================
@@ -1218,6 +1384,7 @@ class MonomerosController:
                     hum,
                     gas,
                     calidad_ambiente,
+                    calidad_gas,
                     is_critical
                 )
 
@@ -1247,6 +1414,7 @@ class MonomerosController:
                     hum,
                     gas,
                     calidad_ambiente,
+                    calidad_gas,
                     is_critical
                 )
 
@@ -1254,7 +1422,7 @@ class MonomerosController:
             # PEQUEÑA PAUSA
             # ======================================================
 
-            utime.sleep_ms(50)
+            utime.sleep_ms(100)
 
 
 # ==================================================================
