@@ -14,6 +14,7 @@ def listar_mantenimientos():
         id_area=request.args.get('id_area'),
         responsable_id=request.args.get('responsable_id'),
         tipo=request.args.get('tipo'),
+        id_sensor=request.args.get('id_sensor'),
         fecha_desde=request.args.get('fecha_desde'),
         fecha_hasta=request.args.get('fecha_hasta'),
     )
@@ -45,6 +46,9 @@ def crear_mantenimiento():
         responsable_id=data.get("responsable_id"),
         resultado=data.get("resultado"),
         proximo_mantenimiento=data.get("proximo_mantenimiento"),
+        # Opcional: un mantenimiento puede ser de un area completa o de un
+        # sensor puntual.
+        id_sensor=data.get("id_sensor"),
     )
 
     try:
@@ -52,7 +56,7 @@ def crear_mantenimiento():
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except IntegrityError:
-        return jsonify({"error": "id_area o responsable_id inválido"}), 409
+        return jsonify({"error": "id_area, responsable_id o id_sensor invalido"}), 409
 
     return jsonify(nuevo.a_dict()), 201
 

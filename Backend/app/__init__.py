@@ -8,7 +8,7 @@ from app.core.database import engine
 from app.api import (
     usuarios_bp, roles_bp, estados_bp, areas_bp, parametros_bp,
     limites_bp, mediciones_bp, alertas_bp, incidentes_bp,
-    mantenimientos_bp, modelos_ia_bp, predicciones_bp,
+    mantenimientos_bp, modelos_ia_bp, predicciones_bp, sensores_bp,
 )
 
 
@@ -49,6 +49,7 @@ def create_app() -> Flask:
     app.register_blueprint(mantenimientos_bp)
     app.register_blueprint(modelos_ia_bp)
     app.register_blueprint(predicciones_bp)
+    app.register_blueprint(sensores_bp)
 
     @app.get('/')
     def home():

@@ -14,3 +14,4 @@ class Mantenimiento(ModeloBase):
     responsable_id: int | None = None
     resultado: str | None = None
     proximo_mantenimiento: Any = None
+    id_sensor: int | None = None

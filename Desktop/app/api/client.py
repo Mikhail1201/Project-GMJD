@@ -61,6 +61,64 @@ class ApiClient:
     def listar_mantenimientos(self, **filtros) -> list[dict]:
         return self._request("GET", "/api/mantenimientos/", params=_limpiar(filtros))
 
+    # --- Sensores --------------------------------------------------------
+    def listar_sensores(self, **filtros) -> list[dict]:
+        return self._request("GET", "/api/sensores/", params=_limpiar(filtros))
+
+    def obtener_sensor(self, id_sensor: int) -> dict:
+        return self._request("GET", f"/api/sensores/{id_sensor}")
+
+    def crear_sensor(
+        self,
+        codigo: str,
+        nombre: str,
+        id_area: int,
+        id_parametro: int,
+        descripcion: str | None = None,
+        ubicacion_detalle: str | None = None,
+        modelo: str | None = None,
+        fabricante: str | None = None,
+        numero_serie: str | None = None,
+        protocolo: str | None = None,
+        rango_minimo: float | None = None,
+        rango_maximo: float | None = None,
+        frecuencia_muestreo_seg: int | None = None,
+        responsable_id: int | None = None,
+    ) -> dict:
+        payload = _limpiar({
+            "codigo": codigo,
+            "nombre": nombre,
+            "id_area": id_area,
+            "id_parametro": id_parametro,
+            "descripcion": descripcion,
+            "ubicacion_detalle": ubicacion_detalle,
+            "modelo": modelo,
+            "fabricante": fabricante,
+            "numero_serie": numero_serie,
+            "protocolo": protocolo,
+            "rango_minimo": rango_minimo,
+            "rango_maximo": rango_maximo,
+            "frecuencia_muestreo_seg": frecuencia_muestreo_seg,
+            "responsable_id": responsable_id,
+        })
+        return self._request("POST", "/api/sensores/", json=payload)
+
+    def actualizar_sensor(self, id_sensor: int, **campos) -> dict:
+        return self._request("PUT", f"/api/sensores/{id_sensor}", json=_limpiar(campos))
+
+    def marcar_sensor_principal(self, id_sensor: int) -> dict:
+        return self._request("PUT", f"/api/sensores/{id_sensor}/principal")
+
+    def registrar_calibracion_sensor(self, id_sensor: int, meses_proxima: int = 12) -> dict:
+        return self._request(
+            "PUT",
+            f"/api/sensores/{id_sensor}/calibracion",
+            json={"meses_proxima": meses_proxima},
+        )
+
+    def eliminar_sensor(self, id_sensor: int) -> dict:
+        return self._request("DELETE", f"/api/sensores/{id_sensor}")
+
     # --- Mediciones ----------------------------------------------------
     def listar_mediciones(self, pagina: int = 1, por_pagina: int = 50, **filtros) -> dict:
         params = _limpiar(filtros)

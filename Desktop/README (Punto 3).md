@@ -26,13 +26,14 @@ La aplicación **no** habla con la base de datos directamente. Todo lo que muest
 App de Escritorio (PySide6)  --HTTP/JSON-->  Backend Flask  --SQL-->  Neon (PostgreSQL)
 ```
 
-La app tiene 5 pantallas, todas accesibles desde un menú lateral que se puede colapsar con el botón ☰:
+La app tiene 6 pantallas, todas accesibles desde un menú lateral que se puede colapsar con el botón ☰:
 
 1. **Panel Principal (Dashboard):** vista general en vivo, con relojes tipo velocímetro (gauges) para los parámetros más importantes, una tabla con las últimas mediciones y otra con las alertas críticas/altas recientes. Se refresca sola cada 15 segundos.
 2. **Historial de Mediciones:** tabla con TODAS las mediciones guardadas, con filtros (área, parámetro, calidad del dato, rango de fechas), paginación y exportación a PDF.
 3. **Alertas:** tabla de alertas generadas automáticamente cuando una medición se sale de rango, con filtros por área/nivel y un botón para marcarlas como "atendidas".
 4. **Incidentes Ambientales:** tabla de incidentes (algo más grave que una alerta, ej. una fuga real), con botón para crearlos manualmente y para marcarlos como resueltos.
-5. **Reportes PDF:** formulario para generar un reporte en PDF de un área y un rango de fechas, incluyendo mediciones y/o alertas.
+5. **Sensores:** inventario de los equipos físicos instalados en la planta (qué mide cada uno y en qué área), con filtros, registro de nuevos sensores, registro de calibración y marcado del sensor "principal" de cada área/parámetro. El principal es el que el backend asigna automáticamente a las mediciones que llegan del ESP32.
+6. **Reportes PDF:** formulario para generar un reporte en PDF de un área y un rango de fechas, incluyendo mediciones y/o alertas.
 
 Además tiene un botón para cambiar entre modo claro y modo oscuro (se recuerda la próxima vez que se abre la app) y un indicador (pastilla de color) arriba que dice si hay conexión con el backend o no, revisándolo cada cierto tiempo, no solo al abrir la app.
 
@@ -75,8 +76,8 @@ Desktop/
     │                             (INTERVALO_REFRESCO_MS).
     ├── state.py                  Clase Catalogos: guarda en memoria, desde
     │                             que arranca la app, la lista de áreas,
-    │                             parámetros y usuarios, para no tener que
-    │                             pedirla otra vez cada vez que se necesita
+    │                             parámetros, usuarios y sensores, para no tener
+    │                             que pedirla otra vez cada vez que se necesita
     │                             mostrar un nombre en vez de un ID.
     ├── utils.py                  Funciones para fechas y números: convierte
     │                             las fechas UTC que manda el backend a hora
@@ -118,7 +119,7 @@ Desktop/
         ├── main_window.py        Clase MainWindow: la ventana principal,
         │                         con el menú lateral, la barra de arriba
         │                         (estado de conexión y botón de tema) y el
-        │                         contenedor que cambia entre las 5 pantallas.
+        │                         contenedor que cambia entre las 6 pantallas.
         ├── flow_layout.py        Clase FlowLayout: acomoda los filtros de
         │                         cada pantalla en varias filas automáticamente
         │                         si no caben en una sola línea (responsive).
@@ -127,9 +128,10 @@ Desktop/
         │                         el nombre de cada columna, y que ese orden
         │                         sea real (por fecha, por número, por nivel
         │                         de severidad) y no alfabético.
-        ├── dialogs.py             Clase CrearIncidenteDialog: la ventana
-        │                         emergente con el formulario para registrar
-        │                         un incidente ambiental a mano.
+        ├── dialogs.py             Clases CrearIncidenteDialog y
+        │                         CrearSensorDialog: las ventanas emergentes
+        │                         con los formularios para registrar a mano un
+        │                         incidente ambiental o un sensor.
         ├── widgets/
         │   └── gauge_widget.py    Clase GaugeWidget: el "reloj" tipo
         │                         velocímetro de carro que se dibuja a mano
@@ -141,6 +143,7 @@ Desktop/
             ├── historial_page.py     Historial de Mediciones.
             ├── alertas_page.py       Alertas.
             ├── incidentes_page.py    Incidentes Ambientales.
+            ├── sensores_page.py      Sensores.
             └── reportes_page.py      Reportes PDF.
 ```
 
@@ -157,6 +160,10 @@ Todos estos se llaman desde `app/api/client.py` (clase `ApiClient`). El backend 
 | `GET /health` | Revisa si el backend está vivo, para la pastilla de estado de conexión. |
 | `GET /api/areas/` | Trae las áreas de la planta (ej. Planta A, Almacén) para llenar los filtros y el combo de "Crear Incidente". |
 | `GET /api/parametros-ambientales/` | Trae los parámetros medibles (temperatura, humedad, gas, ruido) con su unidad, para los filtros y los gauges. |
+| `GET /api/sensores/?...` | Trae el inventario de sensores, con filtros por área, parámetro, búsqueda de texto, solo principales, calibración vencida e incluir eliminados. Lo usa la pantalla de Sensores. |
+| `POST /api/sensores/` | Registra un sensor nuevo desde el botón "+ Registrar Sensor". |
+| `PUT /api/sensores/<id>/principal` | Marca un sensor como el principal de su área y parámetro (el que recibe las mediciones del ESP32). |
+| `PUT /api/sensores/<id>/calibracion` | Registra la calibración del sensor y programa la siguiente. |
 | `GET /api/estados/` | Trae el catálogo de estados usado por otras tablas del sistema. |
 | `GET /api/usuarios/` | Trae los usuarios/empleados, para mostrar quién atendió una alerta o es responsable de un incidente. |
 | `GET /api/modelos-ia/` | Trae los modelos de IA registrados (catálogo de apoyo para predicciones). |

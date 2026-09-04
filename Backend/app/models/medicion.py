@@ -13,3 +13,4 @@ class Medicion(ModeloBase):
     fecha_hora: Any = None
     calidad_dato: str | None = None
     observacion: str | None = None
+    id_sensor: int | None = None

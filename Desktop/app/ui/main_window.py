@@ -20,6 +20,7 @@ from app.ui.pages.dashboard_page import DashboardPage
 from app.ui.pages.historial_page import HistorialPage
 from app.ui.pages.incidentes_page import IncidentesPage
 from app.ui.pages.reportes_page import ReportesPage
+from app.ui.pages.sensores_page import SensoresPage
 from app.ui.theme import (
     HOJA_ESTILOS_CLARO,
     HOJA_ESTILOS_OSCURO,
@@ -78,6 +79,7 @@ class MainWindow(QMainWindow):
         self.historial_page = HistorialPage(self.cliente, self.catalogos)
         self.alertas_page = AlertasPage(self.cliente, self.catalogos)
         self.incidentes_page = IncidentesPage(self.cliente, self.catalogos)
+        self.sensores_page = SensoresPage(self.cliente, self.catalogos)
         self.reportes_page = ReportesPage(self.cliente, self.catalogos)
 
         for pagina in (
@@ -85,6 +87,7 @@ class MainWindow(QMainWindow):
             self.historial_page,
             self.alertas_page,
             self.incidentes_page,
+            self.sensores_page,
             self.reportes_page,
         ):
             self.paginas.addWidget(pagina)
@@ -125,7 +128,8 @@ class MainWindow(QMainWindow):
             ("Historial de Mediciones", 1),
             ("Alertas", 2),
             ("Incidentes Ambientales", 3),
-            ("Reportes PDF", 4),
+            ("Sensores", 4),
+            ("Reportes PDF", 5),
         ]
         for texto, indice in opciones:
             boton = QPushButton(texto)
@@ -188,6 +192,7 @@ class MainWindow(QMainWindow):
         self.dashboard_page.aplicar_tema(self._modo_oscuro)
         self.alertas_page.aplicar_tema(self._modo_oscuro)
         self.incidentes_page.aplicar_tema(self._modo_oscuro)
+        self.sensores_page.aplicar_tema(self._modo_oscuro)
 
     def _actualizar_estado_backend(self, estado: str, detalle: str = ""):
         """Muestra una insignia compacta ('Backend conectado/sin conexión')
@@ -220,13 +225,24 @@ class MainWindow(QMainWindow):
             "areas": self.cliente.listar_areas(),
             "parametros": self.cliente.listar_parametros(),
             "usuarios": self.cliente.listar_usuarios(),
+            # Los sensores son un catalogo secundario: si ese endpoint falla,
+            # la app debe seguir arrancando igual (la pantalla de Sensores
+            # pide sus propios datos por su cuenta al abrirse).
+            "sensores": self._obtener_sensores_opcional(),
         }
+
+    def _obtener_sensores_opcional(self) -> list:
+        try:
+            return self.cliente.listar_sensores()
+        except Exception:  # noqa: BLE001
+            return []
 
     def _on_catalogos_listos(self, resultado: dict):
         self.catalogos.cargar(
             areas=resultado["areas"],
             parametros=resultado["parametros"],
             usuarios=resultado["usuarios"],
+            sensores=resultado.get("sensores"),
         )
         self._actualizar_estado_backend("ok", detalle=f"Conectado a {self.cliente.base_url}")
         self._al_cambiar_pagina(self.paginas.currentIndex())

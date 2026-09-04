@@ -8,13 +8,14 @@ TIPOS_VALIDOS = ["preventivo", "correctivo", "predictivo"]
 
 class MantenimientoRepository:
     COLUMNAS = """id_mantenimiento, id_area, tipo, descripcion, fecha,
-               responsable_id, resultado, proximo_mantenimiento"""
+               responsable_id, resultado, proximo_mantenimiento, id_sensor"""
 
     def __init__(self, db_engine=None):
         self.engine = db_engine or engine
 
     def listar(self, id_area=None, responsable_id=None, tipo=None,
-               fecha_desde=None, fecha_hasta=None) -> list[Mantenimiento]:
+               fecha_desde=None, fecha_hasta=None,
+               id_sensor=None) -> list[Mantenimiento]:
         filtros = []
         params = {}
 
@@ -27,6 +28,9 @@ class MantenimientoRepository:
         if tipo:
             filtros.append("tipo = :tipo")
             params["tipo"] = tipo
+        if id_sensor:
+            filtros.append("id_sensor = :id_sensor")
+            params["id_sensor"] = id_sensor
         if fecha_desde:
             filtros.append("fecha >= :fecha_desde")
             params["fecha_desde"] = fecha_desde
@@ -56,10 +60,11 @@ class MantenimientoRepository:
 
         query = f"""
             INSERT INTO mantenimientos
-                (id_area, tipo, descripcion, fecha, responsable_id, resultado, proximo_mantenimiento)
+                (id_area, tipo, descripcion, fecha, responsable_id, resultado,
+                 proximo_mantenimiento, id_sensor)
             VALUES
                 (:id_area, :tipo, :descripcion, COALESCE(:fecha, CURRENT_TIMESTAMP),
-                 :responsable_id, :resultado, :proximo_mantenimiento)
+                 :responsable_id, :resultado, :proximo_mantenimiento, :id_sensor)
             RETURNING {self.COLUMNAS}
         """
         params = {
@@ -70,16 +75,20 @@ class MantenimientoRepository:
             "responsable_id": mantenimiento.responsable_id,
             "resultado": mantenimiento.resultado,
             "proximo_mantenimiento": mantenimiento.proximo_mantenimiento,
+            "id_sensor": mantenimiento.id_sensor,
         }
         with self.engine.begin() as con:
             fila = con.execute(text(query), params).mappings().first()
         return Mantenimiento.desde_fila(fila)
 
     def actualizar(self, id_mantenimiento: int, campos: dict) -> Mantenimiento | None:
-        campos_permitidos = ["resultado", "proximo_mantenimiento", "descripcion"]
+        campos_permitidos = ["resultado", "proximo_mantenimiento", "descripcion", "id_sensor"]
         actualizaciones = {k: v for k, v in campos.items() if k in campos_permitidos}
         if not actualizaciones:
-            raise ValueError("Solo se puede actualizar 'resultado', 'proximo_mantenimiento' o 'descripcion'")
+            raise ValueError(
+                "Solo se puede actualizar 'resultado', 'proximo_mantenimiento', "
+                "'descripcion' o 'id_sensor'"
+            )
 
         set_clause = ", ".join(f"{campo} = :{campo}" for campo in actualizaciones)
         query = f"""

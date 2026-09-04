@@ -92,7 +92,7 @@ flowchart LR
    JSON al cliente.
 
 Este mismo patrón (**ruta valida → repo resuelve catálogos y ejecuta SQL →
-modelo serializa la respuesta**) se repite en las 12 rutas del proyecto.
+modelo serializa la respuesta**) se repite en las 13 rutas del proyecto.
 
 ## Estructura de carpetas
 
@@ -101,7 +101,7 @@ Backend/
 ├── main.py                     # entry point: app = create_app()
 ├── requirements.txt
 └── app/
-    ├── __init__.py              # create_app(): registra los 12 blueprints
+    ├── __init__.py              # create_app(): registra los 13 blueprints
     ├── core/
     │   ├── database.py          # engine de SQLAlchemy (pool_pre_ping para Neon)
     │   ├── constants.py         # nombres de estados/roles — nunca IDs hardcodeados
@@ -118,11 +118,22 @@ Backend/
         └── formulario_usuario.html  # formulario de prueba para creación de usuarios
 ```
 
-Cada tabla del dominio (`usuarios`, `roles`, `estados`, `areas`,
+Cada tabla del dominio (`usuarios`, `roles`, `estados`, `areas`, `sensores`,
 `parametros_ambientales`, `mediciones`, `limites_ambientales`, `alertas`,
 `incidentes_ambientales`, `mantenimientos`, `modelos_ia`, `predicciones_ia`)
 tiene su propio trío `models/<tabla>.py` + `repositories/<tabla>_repo.py` +
 `api/rutas_<tabla>.py`. Ver `API.md` para el detalle de cada endpoint.
+
+`sensores` representa el equipo físico que genera las mediciones: enlaza con
+`areas` (dónde está instalado), `parametros_ambientales` (qué mide), `usuarios`
+(quién responde por su calibración) y `estados`. A su vez, `mediciones` y
+`mantenimientos` lo referencian con un `id_sensor` **opcional**.
+
+El sensor marcado como *principal* de cada `(id_area, id_parametro)` es el que
+`MedicionRepository.crear()` asigna automáticamente cuando la medición llega sin
+`id_sensor` — así el firmware del ESP32 no necesita conocer el inventario de
+sensores: sigue enviando únicamente área y parámetro. El DDL de la tabla está
+versionado en `scripts/ddl_sensores.sql` y el seed en `scripts/seed_sensores.py`.
 
 ## Qué hace cada capa
 
@@ -156,7 +167,7 @@ corresponde a su tipo de dato:
 
 | Tipo de tabla | Estrategia | Tablas |
 |---|---|---|
-| Entidad con ciclo de vida | Soft delete vía `id_estado` (pasa a `"Eliminado"`) | `usuarios`, `areas`, `alertas`, `incidentes_ambientales`, `modelos_ia` |
+| Entidad con ciclo de vida | Soft delete vía `id_estado` (pasa a `"Eliminado"`) | `usuarios`, `areas`, `sensores`, `alertas`, `incidentes_ambientales`, `modelos_ia` |
 | Histórico / versionado temporal | Se cierra con `fecha_fin`, nunca se borra la fila | `limites_ambientales` |
 | Log append-only | No se borra ni se actualiza, solo se inserta | `mediciones`, `predicciones_ia`, `mantenimientos` |
 | Catálogo | `DELETE` real, con validación de llaves foráneas | `roles`, `estados`, `parametros_ambientales` |

@@ -10,10 +10,11 @@ from app.repositories.incidente_ambiental_repo import IncidenteAmbientalReposito
 from app.repositories.mantenimiento_repo import MantenimientoRepository
 from app.repositories.modelo_ia_repo import ModeloIARepository
 from app.repositories.prediccion_ia_repo import PrediccionIARepository
+from app.repositories.sensor_repo import SensorRepository
 
 __all__ = [
     "UsuarioRepository", "RolRepository", "EstadoRepository", "AreaRepository",
     "ParametroAmbientalRepository", "LimiteAmbientalRepository", "MedicionRepository",
     "AlertaRepository", "IncidenteAmbientalRepository", "MantenimientoRepository",
-    "ModeloIARepository", "PrediccionIARepository",
+    "ModeloIARepository", "PrediccionIARepository", "SensorRepository",
 ]

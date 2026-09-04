@@ -22,6 +22,7 @@ def listar_mediciones():
         id_area=request.args.get('id_area'),
         id_parametro=request.args.get('id_parametro'),
         calidad_dato=request.args.get('calidad_dato'),
+        id_sensor=request.args.get('id_sensor'),
         fecha_desde=request.args.get('fecha_desde'),
         fecha_hasta=request.args.get('fecha_hasta'),
     )
@@ -61,6 +62,9 @@ def crear_medicion():
         fecha_hora=data.get("fecha_hora"),
         calidad_dato=data.get("calidad_dato"),
         observacion=data.get("observacion"),
+        # Opcional: si no viene, el repositorio resuelve el sensor principal
+        # del (id_area, id_parametro) — es lo que pasa con el ESP32.
+        id_sensor=data.get("id_sensor"),
     )
 
     try:

@@ -18,7 +18,7 @@ gases). Todas las respuestas son JSON. Base URL local: `http://localhost:5000`.
   - `409` — conflicto de integridad referencial (FK inválida, único duplicado)
   - `502` — falla al comunicarse con Neon Auth (solo en creación de usuarios)
 - **Soft delete**: los recursos con ciclo de vida (`usuarios`, `areas`, `alertas`,
-  `incidentes_ambientales`, `modelos_ia`) no se borran físicamente; `DELETE`
+  `incidentes_ambientales`, `modelos_ia`, `sensores`) no se borran físicamente; `DELETE`
   cambia su `id_estado` a "Eliminado". Por defecto, los listados excluyen estos
   registros — usar `?incluir_eliminados=true` (o `incluir_eliminadas` en areas/alertas)
   para verlos.
@@ -140,6 +140,110 @@ Soft delete.
 
 ---
 
+## Sensores
+
+Inventario de los equipos físicos que generan las mediciones. Entidad con ciclo
+de vida (soft delete). Cada sensor pertenece a un área y mide un parámetro.
+
+**Sensor principal.** Solo puede haber **un** sensor marcado como principal por
+cada combinación `(id_area, id_parametro)` — lo garantiza un índice único parcial
+en la base. Es el sensor que el backend asigna automáticamente a las mediciones
+que llegan sin `id_sensor` (el caso del ESP32).
+
+### `GET /api/sensores/`
+| Query param | Tipo | Descripción |
+|---|---|---|
+| `id_area` | int | — |
+| `id_parametro` | int | — |
+| `id_estado` | int | — |
+| `responsable_id` | int | — |
+| `busqueda` | string | Coincidencia parcial en código, nombre, n.º de serie, modelo o fabricante |
+| `solo_principales` | bool | Solo los marcados como principales |
+| `calibracion_vencida` | bool | Solo aquellos cuya `fecha_proxima_calibracion` ya pasó |
+| `incluir_eliminados` | bool | Incluye los de estado "Eliminado" |
+
+**Respuesta 200** — lista. Además de las columnas de la tabla, cada elemento trae
+los campos resueltos por JOIN: `nombre_area`, `nombre_parametro`,
+`unidad_parametro`, `nombre_responsable` y `nombre_estado`.
+
+```json
+[ { "id_sensor": 3, "codigo": "SEN-A01-NH3",
+    "nombre": "Detector de amoniaco - Planta de Amoniaco",
+    "id_area": 1, "nombre_area": "Planta de Amoniaco",
+    "id_parametro": 3, "nombre_parametro": "Gas Amoniaco (NH3)", "unidad_parametro": "ppm",
+    "ubicacion_detalle": "Bloque A - Nivel 1, sobre la linea de sintesis",
+    "modelo": "MQ-137", "fabricante": "Winsen", "numero_serie": "WS-MQ137-2201",
+    "protocolo": "Analogico", "rango_minimo": "5.0000", "rango_maximo": "500.0000",
+    "precision_sensor": "1.0000", "frecuencia_muestreo_seg": 5,
+    "fecha_instalacion": "...", "fecha_ultima_calibracion": "...",
+    "fecha_proxima_calibracion": "...", "es_principal": true,
+    "responsable_id": 5, "nombre_responsable": "test new",
+    "id_estado": 1, "nombre_estado": "Activo" } ]
+```
+
+### `GET /api/sensores/resolver?id_area=&id_parametro=`
+Devuelve el sensor **principal** de esa combinación — el mismo criterio que usa
+el backend para completar `mediciones.id_sensor`. Útil para depurar sin tener que
+mirar la base. **400** si falta alguno de los dos parámetros; **404** si no hay
+principal para esa combinación.
+
+### `GET /api/sensores/<id_sensor>`
+
+### `POST /api/sensores/`
+| Campo | Tipo | Requerido |
+|---|---|---|
+| `codigo` | string | sí (único) |
+| `nombre` | string | sí |
+| `id_area` | int | sí |
+| `id_parametro` | int | sí |
+| `descripcion` | string | no |
+| `ubicacion_detalle` | string | no |
+| `modelo` / `fabricante` | string | no |
+| `numero_serie` | string | no (único si se envía) |
+| `protocolo` | string | no (lista cerrada, ver abajo) |
+| `rango_minimo` / `rango_maximo` | number | no |
+| `precision_sensor` | number | no |
+| `frecuencia_muestreo_seg` | int | no |
+| `fecha_instalacion` | datetime | no (default: ahora) |
+| `fecha_ultima_calibracion` / `fecha_proxima_calibracion` | datetime | no |
+| `responsable_id` | int | no |
+| `id_estado` | int | no (default: "Activo") |
+
+`protocolo` válidos: `1-Wire`, `I2C`, `SPI`, `Analogico`, `4-20 mA`, `Modbus RTU`,
+`Modbus TCP`, `RS-232`, `RS-485`, `USB`, `Wi-Fi`.
+
+**400** si falta un requerido, si el protocolo no es válido o si
+`rango_minimo > rango_maximo`. **409** si el código o el n.º de serie ya existen,
+o si alguna FK es inválida.
+
+El sensor se crea **sin** `es_principal`: para marcarlo hay que llamar al endpoint
+dedicado.
+
+### `PUT /api/sensores/<id_sensor>`
+Acepta cualquier campo del POST **menos `es_principal`**, que se cambia solo por
+`PUT /<id>/principal` (si se pudiera editar aquí sería posible dejar dos sensores
+principales de la misma área y parámetro, y la base lo rechazaría con un 409).
+
+### `PUT /api/sensores/<id_sensor>/principal`
+Marca el sensor como principal de su área y parámetro, y **quita la marca al
+anterior** en la misma transacción. Desde ese momento, las mediciones nuevas de
+esa combinación se le atribuyen a este sensor.
+
+### `PUT /api/sensores/<id_sensor>/calibracion`
+| Campo | Tipo | Requerido |
+|---|---|---|
+| `fecha` | datetime | no (default: ahora) |
+| `meses_proxima` | int | no (default: 12) |
+
+Registra la calibración y programa la siguiente sumando `meses_proxima`.
+**400** si `meses_proxima` no es un entero positivo.
+
+### `DELETE /api/sensores/<id_sensor>`
+Soft delete: pasa a estado "Eliminado" y además pierde `es_principal`, para que
+un equipo dado de baja deje de capturar las mediciones nuevas.
+
+---
+
 ## Parámetros ambientales
 
 Catálogo puro (DELETE real, no soft delete) — pero en la práctica, si un parámetro
@@ -225,6 +329,7 @@ Log append-only, con **paginación** (pensado para alto volumen).
 | `id_area` | int | — |
 | `id_parametro` | int | — |
 | `calidad_dato` | string | — (`valida` / `sospechosa` / `invalida`) |
+| `id_sensor` | int | — |
 | `fecha_desde` | datetime | — |
 | `fecha_hasta` | datetime | — |
 
@@ -232,7 +337,8 @@ Log append-only, con **paginación** (pensado para alto volumen).
 ```json
 {
   "datos": [ { "id_medicion": 1, "id_area": 2, "id_parametro": 3, "valor": 24.5,
-               "fecha_hora": "...", "calidad_dato": "valida", "observacion": null } ],
+               "fecha_hora": "...", "calidad_dato": "valida", "observacion": null,
+               "id_sensor": 6 } ],
   "paginacion": { "pagina": 1, "por_pagina": 50, "total": 1500, "total_paginas": 30 }
 }
 ```
@@ -249,12 +355,20 @@ Log append-only, con **paginación** (pensado para alto volumen).
 | `fecha_hora` | datetime | no (default: ahora) |
 | `calidad_dato` | string | no (default: `valida`) |
 | `observacion` | string | no |
+| `id_sensor` | int | no (ver abajo) |
 
 **400** si `calidad_dato` no es una de las 3 válidas. **409** FK inválida.
 
+> **`id_sensor` se resuelve solo.** Si el POST no lo trae, el backend busca el
+> sensor marcado como *principal* para ese `(id_area, id_parametro)` y lo asigna
+> (queda `null` si no hay ninguno). Gracias a esto el ESP32 no necesita saber de
+> qué sensor viene la lectura: sigue enviando únicamente área y parámetro.
+> Un cliente que sí sepa el sensor puede mandarlo explícito y se respeta.
+> Consultable con `GET /api/sensores/resolver?id_area=&id_parametro=`.
+
 ### `PUT /api/mediciones/<id_medicion>`
-Solo `calidad_dato` u `observacion` — nunca `valor`, `fecha_hora`, `id_area` ni
-`id_parametro` (el dato crudo del log no se reescribe).
+Solo `calidad_dato`, `observacion` o `id_sensor` — nunca `valor`, `fecha_hora`,
+`id_area` ni `id_parametro` (el dato crudo del log no se reescribe).
 
 *No hay `DELETE`.*
 
@@ -357,6 +471,7 @@ Log append-only.
 | `id_area` | int |
 | `responsable_id` | int |
 | `tipo` | string (`preventivo`/`correctivo`/`predictivo`) |
+| `id_sensor` | int |
 | `fecha_desde` / `fecha_hasta` | datetime |
 
 ### `GET /api/mantenimientos/<id_mantenimiento>`
@@ -371,9 +486,13 @@ Log append-only.
 | `responsable_id` | int | no |
 | `resultado` | string | no |
 | `proximo_mantenimiento` | date | no |
+| `id_sensor` | int | no |
+
+`id_sensor` es opcional porque un mantenimiento puede ser de un área completa
+(barrido general) o de un sensor puntual.
 
 ### `PUT /api/mantenimientos/<id_mantenimiento>`
-Solo `resultado`, `proximo_mantenimiento`, `descripcion`.
+Solo `resultado`, `proximo_mantenimiento`, `descripcion`, `id_sensor`.
 
 *No hay `DELETE`.*
 

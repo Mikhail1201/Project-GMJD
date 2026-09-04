@@ -2,19 +2,22 @@ from sqlalchemy import text
 
 from app.core.database import engine
 from app.models.medicion import Medicion
+from app.repositories.sensor_repo import resolver_id_sensor
 
 CALIDADES_VALIDAS = ["valida", "sospechosa", "invalida"]
 
 
 class MedicionRepository:
-    COLUMNAS = "id_medicion, id_area, id_parametro, valor, fecha_hora, calidad_dato, observacion"
+    COLUMNAS = ("id_medicion, id_area, id_parametro, valor, fecha_hora, "
+                "calidad_dato, observacion, id_sensor")
 
     def __init__(self, db_engine=None):
         self.engine = db_engine or engine
 
     def listar(self, pagina: int = 1, por_pagina: int = 50,
                id_area=None, id_parametro=None, calidad_dato=None,
-               fecha_desde=None, fecha_hasta=None) -> tuple[list[Medicion], int]:
+               fecha_desde=None, fecha_hasta=None,
+               id_sensor=None) -> tuple[list[Medicion], int]:
         filtros = []
         params = {}
 
@@ -27,6 +30,9 @@ class MedicionRepository:
         if calidad_dato:
             filtros.append("calidad_dato = :calidad_dato")
             params["calidad_dato"] = calidad_dato
+        if id_sensor:
+            filtros.append("id_sensor = :id_sensor")
+            params["id_sensor"] = id_sensor
         if fecha_desde:
             filtros.append("fecha_hora >= :fecha_desde")
             params["fecha_desde"] = fecha_desde
@@ -66,8 +72,11 @@ class MedicionRepository:
             raise ValueError(f"calidad_dato debe ser una de: {', '.join(CALIDADES_VALIDAS)}")
 
         query = f"""
-            INSERT INTO mediciones (id_area, id_parametro, valor, fecha_hora, calidad_dato, observacion)
-            VALUES (:id_area, :id_parametro, :valor, COALESCE(:fecha_hora, CURRENT_TIMESTAMP), :calidad_dato, :observacion)
+            INSERT INTO mediciones
+                (id_area, id_parametro, valor, fecha_hora, calidad_dato, observacion, id_sensor)
+            VALUES
+                (:id_area, :id_parametro, :valor, COALESCE(:fecha_hora, CURRENT_TIMESTAMP),
+                 :calidad_dato, :observacion, :id_sensor)
             RETURNING {self.COLUMNAS}
         """
         params = {
@@ -79,14 +88,24 @@ class MedicionRepository:
             "observacion": medicion.observacion,
         }
         with self.engine.begin() as con:
+            # Si quien envia la medicion no dice de que sensor viene (es el
+            # caso del ESP32, que solo conoce el area y el parametro), se
+            # resuelve aqui buscando el sensor principal de esa combinacion.
+            # Va en la MISMA transaccion que el INSERT, asi que no hay
+            # conexion extra ni riesgo de leer un estado intermedio.
+            params["id_sensor"] = (
+                medicion.id_sensor
+                if medicion.id_sensor is not None
+                else resolver_id_sensor(con, medicion.id_area, medicion.id_parametro)
+            )
             fila = con.execute(text(query), params).mappings().first()
         return Medicion.desde_fila(fila)
 
     def actualizar(self, id_medicion: int, campos: dict) -> Medicion | None:
-        campos_permitidos = ["calidad_dato", "observacion"]
+        campos_permitidos = ["calidad_dato", "observacion", "id_sensor"]
         actualizaciones = {k: v for k, v in campos.items() if k in campos_permitidos}
         if not actualizaciones:
-            raise ValueError("Solo se puede actualizar 'calidad_dato' u 'observacion' en una medición")
+            raise ValueError("Solo se puede actualizar 'calidad_dato', 'observacion' o 'id_sensor' en una medicion")
 
         if "calidad_dato" in actualizaciones and actualizaciones["calidad_dato"] not in CALIDADES_VALIDAS:
             raise ValueError(f"calidad_dato debe ser una de: {', '.join(CALIDADES_VALIDAS)}")

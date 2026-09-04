@@ -10,9 +10,10 @@ from app.api.rutas_incidentes_ambientales import incidentes_bp
 from app.api.rutas_mantenimientos import mantenimientos_bp
 from app.api.rutas_modelos_ia import modelos_ia_bp
 from app.api.rutas_predicciones_ia import predicciones_bp
+from app.api.rutas_sensores import sensores_bp
 
 __all__ = [
     "usuarios_bp", "roles_bp", "estados_bp", "areas_bp", "parametros_bp",
     "limites_bp", "mediciones_bp", "alertas_bp", "incidentes_bp",
-    "mantenimientos_bp", "modelos_ia_bp", "predicciones_bp",
+    "mantenimientos_bp", "modelos_ia_bp", "predicciones_bp", "sensores_bp",
 ]
